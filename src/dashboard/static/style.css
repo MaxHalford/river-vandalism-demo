@@ -518,7 +518,13 @@ section h2 {
 
 .events-table tr:hover td { background: rgba(91, 155, 255, 0.04); }
 
-.col-time { color: var(--fg-muted); font-size: 11px; }
+.events-table td.col-time {
+  color: var(--fg-muted);
+  font-size: 11px;
+  overflow: visible;
+  text-overflow: clip;
+  min-width: 78px;
+}
 .col-title { color: var(--fg); }
 .col-user { color: var(--fg-dim); }
 .col-user.anon { color: var(--cyan); }
@@ -582,7 +588,7 @@ section h2 {
    ============================================================ */
 
 #candidates-section { padding: 0; }
-#candidates { padding: 0; }
+#candidates { padding: 0; overflow-x: auto; }
 
 #candidates table {
   width: 100%;
@@ -800,23 +806,82 @@ section h2 {
    RESPONSIVE
    ============================================================ */
 
-@media (max-width: 820px) {
-  body > header { padding-top: 28px; }
-  .masthead { grid-template-columns: 1fr; gap: 22px; }
-  .brand-title { font-size: clamp(26px, 7vw, 36px); }
-  .masthead-actions { justify-content: flex-start; }
-  .status-bar { flex-direction: column; align-items: stretch; }
-  .live-indicator { border-right: none; border-bottom: 1px solid var(--rule); }
-  .stat { border-right: none; border-bottom: 1px solid var(--rule); }
-  #last-updated { margin-left: 0; border-left: none; border-top: 1px solid var(--rule); }
-  main { grid-template-rows: 280px 480px auto; }
-  section h2 { padding: 12px 14px; gap: 10px; }
-  .section-meta { font-size: 9px; }
-  .modal { padding: 14px; }
-  .modal-header { padding: 18px 20px 14px; }
-  .modal-body { padding: 18px 20px 24px; }
+@media (max-width: 1024px) {
+  body > header { padding: 28px var(--pad) 16px; }
+  main { margin-top: 22px; gap: 20px; }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 820px) {
+  body > header { padding-top: 24px; }
+  .masthead { grid-template-columns: 1fr; gap: 20px; }
+  .brand-title { font-size: clamp(26px, 7vw, 36px); }
+  .brand-sub { font-size: 13px; }
+  .masthead-actions { justify-content: flex-start; }
+  .status-bar { flex-wrap: wrap; }
+  .live-indicator { flex: 0 0 auto; }
+  .stat { flex: 0 0 auto; }
+  #last-updated {
+    flex: 1 1 100%;
+    margin-left: 0;
+    border-left: none;
+    border-top: 1px solid var(--rule);
+  }
+  main {
+    grid-template-rows: 300px 460px auto;
+    gap: 18px;
+  }
+  section h2 { padding: 12px 14px; gap: 10px; }
+  .section-meta { font-size: 9px; }
+  .chart-tab { padding: 10px 12px; letter-spacing: 0.14em; }
+  .chart-legend { gap: 14px; padding: 0 12px; font-size: 10px; }
+  .modal { padding: 14px; }
+  .modal-content { max-height: 92vh; }
+  .modal-header { padding: 18px 20px 14px; }
+  .modal-header h2 { font-size: 16px; }
+  .modal-body { padding: 18px 20px 24px; font-size: 13px; }
+}
+
+@media (max-width: 600px) {
+  :root { --pad: 14px; }
+  body > header { padding-top: 22px; padding-bottom: 14px; }
+  .brand { gap: 12px; }
+  .brand-title { font-size: clamp(22px, 7vw, 30px); letter-spacing: -0.01em; }
+  .brand-sub { font-size: 12px; line-height: 1.55; }
+  .masthead-actions { gap: 8px; }
+  .link-btn, .masthead-actions a { padding: 9px 12px; font-size: 10px; }
+  .status-bar {
+    flex-direction: column;
+    align-items: stretch;
+    font-size: 11px;
+  }
+  .live-indicator { border-right: none; border-bottom: 1px solid var(--rule); padding: 10px 14px; }
+  .stat { border-right: none; border-bottom: 1px solid var(--rule); padding: 9px 14px; }
+  #summary { flex-direction: column; }
+  #summary .stat { width: 100%; }
+  #last-updated { padding: 9px 14px; font-size: 10px; }
+  main {
+    margin-top: 18px;
+    grid-template-rows: 260px 420px auto;
+    gap: 14px;
+  }
+  section h2 {
+    padding: 10px 12px;
+    gap: 8px;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
   .section-meta { display: none; }
+  .chart-toolbar { flex-wrap: wrap; }
+  .chart-tabs { width: 100%; border-bottom: 1px solid var(--rule); }
+  .chart-tab { flex: 1; text-align: center; padding: 10px 8px; }
+  .chart-legend { width: 100%; padding: 8px 12px; flex-wrap: wrap; }
+  .events-table th, .events-table td { padding: 8px 10px; }
+  .events-table th { font-size: 9px; letter-spacing: 0.12em; }
+  #candidates th, #candidates td { padding: 9px 12px; }
+}
+
+@media (max-width: 420px) {
+  .brand-sub { display: none; }
+  .masthead-actions { width: 100%; }
+  .masthead-actions a, .masthead-actions button { flex: 1; text-align: center; }
 }
