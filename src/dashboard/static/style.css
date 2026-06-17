@@ -47,6 +47,11 @@ header a:hover { text-decoration: underline; }
   flex-wrap: wrap;
   font-size: 13px;
 }
+#last-updated {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.muted { color: var(--muted); }
 .stat {
   color: var(--muted);
 }

@@ -20,6 +20,7 @@
       <a href="https://github.com/yourname/river-vandalism-demo">source</a>.
     </p>
     <div id="summary"></div>
+    <div id="last-updated" class="muted"></div>
   </header>
 
   <main>
@@ -46,6 +47,10 @@
     const worker = await perspective.worker();
 
     // --- Summary stats ---
+    function setUpdatedNow() {
+      document.getElementById("last-updated").textContent =
+        "Updated " + new Date().toLocaleTimeString();
+    }
     async function refreshSummary() {
       const r = await fetch("/api/summary");
       const s = await r.json();
@@ -56,9 +61,10 @@
         <span class="stat"><b>${s.n_reverted.toLocaleString()}</b> reverted (${rate}%)</span>
         <span class="stat"><b>${s.n_pending.toLocaleString()}</b> pending</span>
       `;
+      setUpdatedNow();
     }
     refreshSummary();
-    setInterval(refreshSummary, 15000);
+    setInterval(refreshSummary, 5000);
 
     // --- Metrics chart ---
     const metricsSchema = {
@@ -94,7 +100,7 @@
       await metricsTable.replace(rows);
     }
     loadMetrics();
-    setInterval(loadMetrics, 60000);
+    setInterval(loadMetrics, 20000);
 
     // --- Live edits table ---
     const editsSchema = {
@@ -160,21 +166,40 @@
     refreshCandidates();
     setInterval(refreshCandidates, 30000);
 
-    // --- WebSocket live updates ---
+    // --- Live event table: WS for push + polling fallback ---
+    let wsAlive = false;
+    let lastRevId = 0;
     function openWS() {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(`${proto}//${location.host}/ws/edits`);
       ws.binaryType = "arraybuffer";
+      ws.onopen = () => { wsAlive = true; };
       ws.onmessage = async (e) => {
         const txt = typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data);
         const msg = JSON.parse(txt);
         if (msg.type === "seed" || msg.type === "update") {
-          await editsTable.update(msg.rows);
+          if (msg.rows.length) {
+            lastRevId = Math.max(lastRevId, ...msg.rows.map((r) => r.rev_id));
+            await editsTable.update(msg.rows);
+          }
         }
       };
-      ws.onclose = () => setTimeout(openWS, 2000);
+      ws.onclose = () => { wsAlive = false; setTimeout(openWS, 2000); };
+      ws.onerror = () => { wsAlive = false; };
     }
     openWS();
+
+    // Polling fallback — fires every 5s and only takes effect if the WS is
+    // not alive (e.g. corporate proxy blocked it, browser quirk, etc.).
+    async function pollRecent() {
+      if (wsAlive) return;
+      const r = await fetch("/api/recent?limit=200");
+      const rows = await r.json();
+      if (!rows.length) return;
+      lastRevId = Math.max(lastRevId, ...rows.map((r) => r.rev_id));
+      await editsTable.update(rows);
+    }
+    setInterval(pollRecent, 5000);
   </script>
 </body>
 </html>
