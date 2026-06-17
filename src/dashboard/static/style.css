@@ -105,13 +105,6 @@ a:hover { border-bottom-color: var(--cyan); }
   letter-spacing: 0.24em;
 }
 
-.brand-mark::before {
-  content: '⊕ ';
-  color: var(--cyan);
-  font-weight: 400;
-  margin-right: 2px;
-}
-
 .banner-sep {
   width: 1px;
   height: 12px;
