@@ -15,13 +15,109 @@
     <h1>Live Wikipedia vandalism detection</h1>
     <p>
       <a href="https://riverml.xyz">River</a> online learning vs. daily-retrained LightGBM
-      vs. Wikimedia's <a href="https://api.wikimedia.org/wiki/Lift_Wing_API/Reference">Lift Wing</a>
-      Revert Risk model.
-      <a href="https://github.com/yourname/river-vandalism-demo">source</a>.
+      vs. Wikimedia's <a href="https://api.wikimedia.org/wiki/Lift_Wing_API/Reference">Lift Wing</a>.
+      <button id="about-btn" class="link-btn">how it works</button> ·
+      <a href="https://github.com/MaxHalford/river-vandalism-demo">source</a>
     </p>
     <div id="summary"></div>
     <div id="last-updated" class="muted"></div>
   </header>
+
+  <div id="about-modal" class="modal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="about-title">
+      <header class="modal-header">
+        <h2 id="about-title">How this works</h2>
+        <button id="about-close" class="modal-close" aria-label="Close">×</button>
+      </header>
+      <div class="modal-body">
+
+        <h3>What you're looking at</h3>
+        <p>A live demo of online machine learning predicting which Wikipedia
+        edits will be reverted. Three models race in real time on every edit
+        that flows through Wikimedia's
+        <a href="https://wikitech.wikimedia.org/wiki/Event_Platform/EventStreams">EventStreams</a>:
+        </p>
+        <ul>
+          <li><b>River online</b> — logistic regression with a standard
+          scaler. Calls <code>learn_one(x, y)</code> on every labeled edit.
+          No retraining, adapts to drift naturally.</li>
+          <li><b>scikit-learn batch</b> — LightGBM retrained every
+          <span data-cfg="batch_retrain_interval_hours">…</span> hours on the
+          last <span data-cfg="batch_train_window_days">…</span> days of
+          labeled data. The "classical" baseline.</li>
+          <li><b>Lift Wing</b> — Wikimedia's own production model
+          <a href="https://meta.wikimedia.org/wiki/Machine_learning_models/Production/Language-agnostic_revert_risk"><code>revertrisk-language-agnostic</code></a>
+          (XGBoost). The benchmark we're not trying to beat.</li>
+        </ul>
+
+        <h3>How labels work</h3>
+        <p>Every edit gets all three predictions the moment it arrives. The
+        <em>label</em> arrives later:</p>
+        <ul>
+          <li><b>Positive</b>: Wikimedia attaches the
+          <code>mw-reverted</code> tag to the revision (we watch the
+          <a href="https://stream.wikimedia.org/v2/stream/mediawiki.revision-tags-change">
+          revision-tags-change</a> stream for this).</li>
+          <li><b>Negative</b>: no revert tag arrives within
+          <b><span data-cfg="label_ttl_hours">…</span> hours</b> of the edit.
+          The
+          <a href="https://meta.wikimedia.org/wiki/Research:Revert">WMF Research convention</a>
+          is 48 hours.</li>
+        </ul>
+        <p>Both timestamps are recorded — when the edit happened and when
+        the label became knowable. That's what makes honest backtesting
+        possible (River calls it
+        <a href="https://riverml.xyz/0.21.2/recipes/on-delayed-predictions/">delayed
+        progressive validation</a>).</p>
+
+        <h3>The metrics chart</h3>
+        <p>Rolling AUC / log-loss / Brier over the last 2,000 labeled
+        events, recomputed every minute by the ml service.</p>
+        <ul>
+          <li><b>ROC-AUC</b> is undefined when only one class is present —
+          stays blank until the first negative label, ~<span data-cfg="label_ttl_hours">…</span>h
+          after launch.</li>
+          <li><b>log-loss</b> and <b>Brier</b> are well-defined from the
+          first labeled edit.</li>
+        </ul>
+
+        <h3>The live event stream</h3>
+        <p>Every edit the ingest service sees, with all three model scores
+        and the eventual label as it arrives. Updates over WebSocket; falls
+        back to polling every 5s if WS is blocked.</p>
+
+        <h3>Autoresearch</h3>
+        <p>When enabled, once a day a <code>gpt-5</code> call proposes a new
+        River pipeline (and optionally a new featurizer). The candidate
+        runs in an AST-sandboxed subprocess against the last 48h of recorded
+        history. A paired bootstrap on per-prediction log-loss decides
+        whether to hot-swap it into production: ΔAUC > 0.005 AND p &lt; 0.05.</p>
+        <p class="muted">Currently:
+        <b data-cfg-bool="autoresearch_enabled">…</b>
+        <span data-cfg-when="autoresearch_enabled" class="autoresearch-on">
+          (model: <span data-cfg="openai_model">…</span>)
+        </span></p>
+
+        <h3>What's deployed</h3>
+        <ul class="config-list">
+          <li>Wikis: <code data-cfg="wikis">…</code></li>
+          <li>Namespace: <code data-cfg="namespace">…</code></li>
+          <li>Label TTL: <code data-cfg="label_ttl_hours">…</code> hours</li>
+          <li>Ingest sample rate: <code data-cfg="sample_rate">…</code></li>
+          <li>Lift Wing sample rate: <code data-cfg="liftwing_sample_rate">…</code></li>
+        </ul>
+
+        <h3>Links</h3>
+        <ul>
+          <li><a href="https://github.com/MaxHalford/river-vandalism-demo">Source on GitHub</a></li>
+          <li><a href="https://riverml.xyz">River documentation</a></li>
+          <li><a href="https://api.wikimedia.org/wiki/Lift_Wing_API/Reference">Lift Wing API</a></li>
+        </ul>
+
+      </div>
+    </div>
+  </div>
 
   <main>
     <section>
@@ -45,6 +141,38 @@
     import "https://cdn.jsdelivr.net/npm/@finos/perspective-viewer-d3fc@3.4.3/dist/cdn/perspective-viewer-d3fc.js";
 
     const worker = await perspective.worker();
+
+    // --- Modal + config-driven docs ---
+    async function loadConfig() {
+      const r = await fetch("/api/config");
+      const cfg = await r.json();
+      for (const el of document.querySelectorAll("[data-cfg]")) {
+        const key = el.getAttribute("data-cfg");
+        let v = cfg[key];
+        if (Array.isArray(v)) v = v.join(", ");
+        if (v === null || v === undefined) v = "—";
+        el.textContent = String(v);
+      }
+      for (const el of document.querySelectorAll("[data-cfg-bool]")) {
+        const key = el.getAttribute("data-cfg-bool");
+        el.textContent = cfg[key] ? "enabled" : "disabled";
+      }
+      for (const el of document.querySelectorAll("[data-cfg-when]")) {
+        const key = el.getAttribute("data-cfg-when");
+        if (!cfg[key]) el.hidden = true;
+      }
+    }
+    loadConfig();
+
+    const modal = document.getElementById("about-modal");
+    function openModal() { modal.hidden = false; }
+    function closeModal() { modal.hidden = true; }
+    document.getElementById("about-btn").addEventListener("click", openModal);
+    document.getElementById("about-close").addEventListener("click", closeModal);
+    modal.querySelector(".modal-backdrop").addEventListener("click", closeModal);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !modal.hidden) closeModal();
+    });
 
     // --- Summary stats ---
     function setUpdatedNow() {

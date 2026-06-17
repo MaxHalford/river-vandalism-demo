@@ -115,6 +115,25 @@ async def api_candidates(limit: int = 30):
     return JSONResponse(out)
 
 
+@app.get("/api/config")
+async def api_config():
+    """Operational config the modal docs show — kept in one place so the
+    documentation stays in sync with what's actually running."""
+    return JSONResponse(
+        {
+            "wikis": sorted(CONFIG.wikis),
+            "namespace": CONFIG.namespace_filter,
+            "label_ttl_hours": CONFIG.label_ttl_hours,
+            "batch_train_window_days": CONFIG.batch_train_window_days,
+            "batch_retrain_interval_hours": CONFIG.batch_retrain_interval_hours,
+            "sample_rate": CONFIG.sample_rate,
+            "liftwing_sample_rate": CONFIG.liftwing_sample_rate,
+            "autoresearch_enabled": CONFIG.autoresearch_enabled,
+            "openai_model": CONFIG.openai_model if CONFIG.autoresearch_enabled else None,
+        }
+    )
+
+
 @app.get("/api/summary")
 async def api_summary():
     assert _pool is not None
