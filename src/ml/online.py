@@ -41,17 +41,12 @@ class MetricBuffer:
     def __len__(self) -> int:
         return len(self.buf)
 
-    # Lowered min-n thresholds: brier/logloss show after a handful of labels;
-    # rocauc still waits for ≥20 with both classes (it's meaningless otherwise).
-    MIN_N_PROPER_SCORE = 5
-    MIN_N_AUC = 20
-
     def rocauc(self) -> float | None:
-        if len(self.buf) < self.MIN_N_AUC:
+        if not self.buf:
             return None
         ys = [y for y, _ in self.buf]
         if sum(ys) == 0 or sum(ys) == len(ys):
-            return None  # need both classes
+            return None  # AUC is undefined when only one class is present
         try:
             from sklearn.metrics import roc_auc_score
 
@@ -60,7 +55,7 @@ class MetricBuffer:
             return None
 
     def logloss(self) -> float | None:
-        if len(self.buf) < self.MIN_N_PROPER_SCORE:
+        if not self.buf:
             return None
         try:
             from sklearn.metrics import log_loss
@@ -70,6 +65,6 @@ class MetricBuffer:
             return None
 
     def brier(self) -> float | None:
-        if len(self.buf) < self.MIN_N_PROPER_SCORE:
+        if not self.buf:
             return None
         return sum((s - y) ** 2 for y, s in self.buf) / len(self.buf)
