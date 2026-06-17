@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Live Wikipedia vandalism detection</title>
+  <title>River · Observatory · Wikipedia vandalism detection</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="/static/style.css" />
   <link
     rel="stylesheet"
@@ -12,15 +14,28 @@
 </head>
 <body>
   <header>
-    <h1>Live Wikipedia vandalism detection</h1>
-    <p>
-      <a href="https://riverml.xyz">River</a> online learning vs. daily-retrained LightGBM
-      vs. Wikimedia's <a href="https://api.wikimedia.org/wiki/Lift_Wing_API/Reference">Lift Wing</a>.
-      <button id="about-btn" class="link-btn">how it works</button> ·
-      <a href="https://github.com/MaxHalford/river-vandalism-demo">source</a>
-    </p>
-    <div id="summary"></div>
-    <div id="last-updated" class="muted"></div>
+    <div class="masthead">
+      <div class="brand">
+        <div class="brand-label">River · Observatory</div>
+        <h1 class="brand-title">Wikipedia <em>vandalism</em> detection</h1>
+        <p class="brand-sub">
+          A live race between three models on the Wikimedia edit stream:
+          <a href="https://riverml.xyz">River</a> online learning,
+          a daily-retrained <a href="https://lightgbm.readthedocs.io/">LightGBM</a> batch,
+          and Wikimedia's own
+          <a href="https://api.wikimedia.org/wiki/Lift_Wing_API/Reference">Lift Wing</a> production model.
+        </p>
+      </div>
+      <div class="masthead-actions">
+        <button id="about-btn" class="link-btn">how it works</button>
+        <a href="https://github.com/MaxHalford/river-vandalism-demo">source ↗</a>
+      </div>
+    </div>
+    <div class="status-bar">
+      <span class="live-indicator">live</span>
+      <div id="summary"></div>
+      <div id="last-updated"></div>
+    </div>
   </header>
 
   <div id="about-modal" class="modal" hidden>
@@ -45,7 +60,7 @@
           <li><b>scikit-learn batch</b> — LightGBM retrained every
           <span data-cfg="batch_retrain_interval_hours">…</span> hours on the
           last <span data-cfg="batch_train_window_days">…</span> days of
-          labeled data. The "classical" baseline.</li>
+          labeled data. The <em>classical</em> baseline.</li>
           <li><b>Lift Wing</b> — Wikimedia's own production model
           <a href="https://meta.wikimedia.org/wiki/Machine_learning_models/Production/Language-agnostic_revert_risk"><code>revertrisk-language-agnostic</code></a>
           (XGBoost). The benchmark we're not trying to beat.</li>
@@ -93,7 +108,7 @@
         runs in an AST-sandboxed subprocess against the last 48h of recorded
         history. A paired bootstrap on per-prediction log-loss decides
         whether to hot-swap it into production: ΔAUC > 0.005 AND p &lt; 0.05.</p>
-        <p class="muted">Currently:
+        <p>Currently:
         <b data-cfg-bool="autoresearch_enabled">…</b>
         <span data-cfg-when="autoresearch_enabled" class="autoresearch-on">
           (model: <span data-cfg="openai_model">…</span>)
@@ -121,15 +136,27 @@
 
   <main>
     <section>
-      <h2>Rolling metrics (last 6 hours)</h2>
+      <h2>
+        <span class="section-num">§ I</span>
+        <span class="section-name">Rolling metrics</span>
+        <span class="section-meta">last 6 hours · 1-min cadence</span>
+      </h2>
       <perspective-viewer id="metrics-viewer"></perspective-viewer>
     </section>
     <section>
-      <h2>Live edit stream</h2>
+      <h2>
+        <span class="section-num">§ II</span>
+        <span class="section-name">Live edit stream</span>
+        <span class="section-meta">websocket · last 2,000 events</span>
+      </h2>
       <perspective-viewer id="edits-viewer"></perspective-viewer>
     </section>
     <section id="candidates-section">
-      <h2>Autoresearch candidates</h2>
+      <h2>
+        <span class="section-num">§ III</span>
+        <span class="section-name">Autoresearch · candidates</span>
+        <span class="section-meta">gpt-5 proposals · ast-sandboxed · paired bootstrap</span>
+      </h2>
       <div id="candidates"></div>
     </section>
   </main>
@@ -177,7 +204,7 @@
     // --- Summary stats ---
     function setUpdatedNow() {
       document.getElementById("last-updated").textContent =
-        "Updated " + new Date().toLocaleTimeString();
+        "updated " + new Date().toLocaleTimeString();
     }
     async function refreshSummary() {
       const r = await fetch("/api/summary");
