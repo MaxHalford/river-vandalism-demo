@@ -82,8 +82,8 @@ async def api_metrics(since_minutes: int = 360):
             {
                 "ts": r["ts"].isoformat(),
                 "rocauc": r["rocauc"],
-                "logloss": r["logloss"],
-                "brier": r["brier"],
+                "precision": r["precision_score"],
+                "recall": r["recall_score"],
                 "n": r["n"],
             }
             for r in rows

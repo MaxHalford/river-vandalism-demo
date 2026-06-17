@@ -51,8 +51,8 @@ CREATE TABLE IF NOT EXISTS metrics_rolling (
     window_n  INT         NOT NULL,
     n         INT         NOT NULL,
     rocauc    DOUBLE PRECISION,
-    logloss   DOUBLE PRECISION,
-    brier     DOUBLE PRECISION,
+    precision_score DOUBLE PRECISION,
+    recall_score    DOUBLE PRECISION,
     PRIMARY KEY (ts, model, window_n)
 );
 CREATE INDEX IF NOT EXISTS metrics_rolling_ts ON metrics_rolling(ts);

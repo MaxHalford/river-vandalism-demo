@@ -41,6 +41,8 @@ class MetricBuffer:
     def __len__(self) -> int:
         return len(self.buf)
 
+    THRESHOLD = 0.5  # default operating point for precision / recall
+
     def rocauc(self) -> float | None:
         if not self.buf:
             return None
@@ -54,17 +56,30 @@ class MetricBuffer:
         except Exception:
             return None
 
-    def logloss(self) -> float | None:
+    def precision(self) -> float | None:
         if not self.buf:
             return None
-        try:
-            from sklearn.metrics import log_loss
-
-            return float(log_loss([y for y, _ in self.buf], [s for _, s in self.buf], labels=[0, 1]))
-        except Exception:
+        tp = fp = 0
+        for y, s in self.buf:
+            if s >= self.THRESHOLD:
+                if y == 1:
+                    tp += 1
+                else:
+                    fp += 1
+        if tp + fp == 0:
             return None
+        return tp / (tp + fp)
 
-    def brier(self) -> float | None:
+    def recall(self) -> float | None:
         if not self.buf:
             return None
-        return sum((s - y) ** 2 for y, s in self.buf) / len(self.buf)
+        tp = fn = 0
+        for y, s in self.buf:
+            if y == 1:
+                if s >= self.THRESHOLD:
+                    tp += 1
+                else:
+                    fn += 1
+        if tp + fn == 0:
+            return None
+        return tp / (tp + fn)

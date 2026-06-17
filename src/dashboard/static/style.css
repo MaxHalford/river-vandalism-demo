@@ -330,35 +330,251 @@ section h2 {
 }
 
 /* ============================================================
-   PERSPECTIVE THEMING
-   Override the named theme's colors via the public custom
-   properties so the viewers match the phosphor palette.
+   CHART (uPlot + custom toolbar)
    ============================================================ */
 
-perspective-viewer {
+.chart {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
-  --plugin--background: var(--bg-elev);
-  --color: var(--fg);
-  --inactive--color: var(--fg-muted);
-
-  /* datagrid */
-  --row-hover--background: rgba(255, 157, 44, 0.06);
-  --row-mouseover--background: rgba(255, 157, 44, 0.06);
-  --row-selected--background: rgba(255, 157, 44, 0.12);
-  --row-hover--color: var(--fg);
-  --rt-pos-cell--color: var(--positive);
-  --rt-neg-cell--color: var(--alert);
-
-  /* chart */
-  --d3fc-series: var(--amber);
-  --d3fc-series-1: var(--amber);
-  --d3fc-series-2: var(--live);
-  --d3fc-series-3: var(--alert);
-  --d3fc-gridline--color: var(--rule);
-  --d3fc-axis--color: var(--fg-muted);
-  --d3fc-axis-ticks--color: var(--fg-muted);
 }
+
+.chart-toolbar {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg-2);
+  flex-shrink: 0;
+}
+
+.chart-tabs { display: flex; }
+
+.chart-tab {
+  padding: 11px 16px;
+  font: 700 10px/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--rule);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.chart-tab:hover { color: var(--fg-dim); }
+
+.chart-tab.active {
+  color: var(--amber);
+  background: rgba(255, 157, 44, 0.06);
+  position: relative;
+}
+
+.chart-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 1px;
+  background: var(--amber);
+}
+
+.chart-legend {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 18px;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.04em;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-dim);
+}
+
+.chart-legend-item em {
+  font-style: normal;
+  color: var(--fg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+
+.chart-legend-swatch {
+  width: 14px;
+  height: 2px;
+  display: inline-block;
+}
+
+.chart-body {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background: var(--bg-elev);
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--fg-muted);
+  font: 400 12px/1.7 var(--mono);
+  padding: 0 24px;
+  pointer-events: none;
+}
+
+/* uPlot theme overrides */
+.uplot,
+.u-wrap {
+  font-family: var(--mono);
+}
+
+.u-axis text,
+.u-legend {
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.u-cursor-x,
+.u-cursor-y {
+  background: var(--amber) !important;
+  opacity: 0.4;
+}
+
+.u-cursor-pt {
+  border-color: var(--bg) !important;
+  border-width: 2px !important;
+}
+
+.u-over { cursor: crosshair; }
+
+/* ============================================================
+   LIVE EDITS TABLE
+   ============================================================ */
+
+.events-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-elev);
+}
+
+.events-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 12px/1.5 var(--mono);
+  font-variant-numeric: tabular-nums;
+  table-layout: fixed;
+}
+
+.events-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-2);
+}
+
+.events-table th {
+  padding: 11px 14px;
+  text-align: left;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+.events-table th.num { text-align: right; }
+
+.events-table td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--fg);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.events-table tr:hover td { background: rgba(255, 157, 44, 0.04); }
+
+.col-time { color: var(--fg-muted); font-size: 11px; }
+.col-title { color: var(--fg); }
+.col-user { color: var(--fg-dim); }
+.col-user.anon { color: var(--amber); }
+.col-user.bot { color: var(--fg-muted); font-style: italic; }
+
+.score-cell {
+  position: relative;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.score-cell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: var(--v, 0%);
+  background: linear-gradient(
+    to right,
+    rgba(255, 157, 44, 0.05),
+    rgba(255, 157, 44, 0.22)
+  );
+  pointer-events: none;
+}
+
+.score-cell > span {
+  position: relative;
+  z-index: 1;
+}
+
+.score-cell.null {
+  color: var(--fg-muted);
+  text-align: right;
+}
+
+.label-pill {
+  display: inline-block;
+  font: 700 10px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.label-pill.reverted { color: var(--alert); }
+.label-pill.kept     { color: var(--positive); }
+.label-pill.pending  { color: var(--fg-muted); }
+
+.label-pill::before { content: '['; opacity: 0.6; margin-right: 1px; }
+.label-pill::after  { content: ']'; opacity: 0.6; margin-left: 1px; }
+
+@keyframes row-flash {
+  0%   { background: rgba(255, 157, 44, 0.16); }
+  100% { background: transparent; }
+}
+
+.events-table tbody tr.new td {
+  animation: row-flash 1.4s ease-out;
+}
+
+/* webkit scrollbar in the events table */
+.events-table-wrap::-webkit-scrollbar { width: 10px; height: 10px; }
+.events-table-wrap::-webkit-scrollbar-track { background: var(--bg-elev); }
+.events-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--rule-2);
+  border: 2px solid var(--bg-elev);
+}
+.events-table-wrap::-webkit-scrollbar-thumb:hover { background: var(--rule-warm); }
 
 /* ============================================================
    CANDIDATES TABLE — code-listing aesthetic

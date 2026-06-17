@@ -192,12 +192,12 @@ async def record_metric(
     window_n: int,
     n: int,
     rocauc: float | None,
-    logloss: float | None,
-    brier: float | None,
+    precision: float | None,
+    recall: float | None,
 ) -> None:
     await pool.execute(
         """
-        INSERT INTO metrics_rolling (ts, model, window_n, n, rocauc, logloss, brier)
+        INSERT INTO metrics_rolling (ts, model, window_n, n, rocauc, precision_score, recall_score)
         VALUES (now(), $1, $2, $3, $4, $5, $6)
         ON CONFLICT (ts, model, window_n) DO NOTHING
         """,
@@ -205,8 +205,8 @@ async def record_metric(
         window_n,
         n,
         rocauc,
-        logloss,
-        brier,
+        precision,
+        recall,
     )
 
 
@@ -311,7 +311,7 @@ async def recent_candidates(pool: asyncpg.Pool, limit: int = 50) -> list[asyncpg
 async def metric_history(pool: asyncpg.Pool, model: str, since_minutes: int = 360) -> list[asyncpg.Record]:
     return await pool.fetch(
         """
-        SELECT ts, rocauc, logloss, brier, n
+        SELECT ts, rocauc, precision_score, recall_score, n
         FROM metrics_rolling
         WHERE model = $1 AND ts >= now() - ($2::text || ' minutes')::interval
         ORDER BY ts ASC

@@ -6,11 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css" />
   <link rel="stylesheet" href="/static/style.css" />
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/@finos/perspective-viewer@3.4.3/dist/css/themes.css"
-  />
+  <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"></script>
 </head>
 <body>
   <header>
@@ -87,14 +85,16 @@
         progressive validation</a>).</p>
 
         <h3>The metrics chart</h3>
-        <p>Rolling AUC / log-loss / Brier over the last 2,000 labeled
-        events, recomputed every minute by the ml service.</p>
+        <p>Rolling <b>ROC-AUC</b>, <b>precision</b>, and <b>recall</b> over the
+        last 2,000 labeled events, recomputed every minute by the ml service.
+        Precision and recall use a fixed threshold of <code>0.5</code>.</p>
         <ul>
           <li><b>ROC-AUC</b> is undefined when only one class is present —
           stays blank until the first negative label, ~<span data-cfg="label_ttl_hours">…</span>h
           after launch.</li>
-          <li><b>log-loss</b> and <b>Brier</b> are well-defined from the
-          first labeled edit.</li>
+          <li><b>Precision</b> is undefined while no model is scoring above
+          the threshold. <b>Recall</b> is undefined while no positive labels
+          have arrived.</li>
         </ul>
 
         <h3>The live event stream</h3>
@@ -141,15 +141,53 @@
         <span class="section-name">Rolling metrics</span>
         <span class="section-meta">last 6 hours · 1-min cadence</span>
       </h2>
-      <perspective-viewer id="metrics-viewer"></perspective-viewer>
+      <div id="metrics-viewer" class="chart">
+        <div class="chart-toolbar">
+          <div class="chart-tabs">
+            <button class="chart-tab active" data-metric="rocauc">ROC-AUC</button>
+            <button class="chart-tab" data-metric="precision">Precision</button>
+            <button class="chart-tab" data-metric="recall">Recall</button>
+          </div>
+          <div class="chart-legend">
+            <span class="chart-legend-item" data-model="online"><span class="chart-legend-swatch" style="background:#ff9d2c"></span>online <em></em></span>
+            <span class="chart-legend-item" data-model="batch"><span class="chart-legend-swatch" style="background:#6dffa1"></span>batch <em></em></span>
+            <span class="chart-legend-item" data-model="liftwing"><span class="chart-legend-swatch" style="background:#c5b894"></span>liftwing <em></em></span>
+          </div>
+        </div>
+        <div class="chart-body"></div>
+      </div>
     </section>
     <section>
       <h2>
         <span class="section-num">§ II</span>
         <span class="section-name">Live edit stream</span>
-        <span class="section-meta">websocket · last 2,000 events</span>
+        <span class="section-meta">websocket · last 100 events</span>
       </h2>
-      <perspective-viewer id="edits-viewer"></perspective-viewer>
+      <div id="edits-viewer" class="events-table-wrap">
+        <table class="events-table">
+          <colgroup>
+            <col style="width: 78px" />
+            <col />
+            <col style="width: 140px" />
+            <col style="width: 92px" />
+            <col style="width: 92px" />
+            <col style="width: 92px" />
+            <col style="width: 96px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col-time">time</th>
+              <th class="col-title">title</th>
+              <th class="col-user">user</th>
+              <th class="num">online</th>
+              <th class="num">batch</th>
+              <th class="num">liftwing</th>
+              <th>label</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </section>
     <section id="candidates-section">
       <h2>
@@ -162,14 +200,22 @@
   </main>
 
   <script type="module">
-    import perspective from "https://cdn.jsdelivr.net/npm/@finos/perspective@3.4.3/dist/cdn/perspective.js";
-    import "https://cdn.jsdelivr.net/npm/@finos/perspective-viewer@3.4.3/dist/cdn/perspective-viewer.js";
-    import "https://cdn.jsdelivr.net/npm/@finos/perspective-viewer-datagrid@3.4.3/dist/cdn/perspective-viewer-datagrid.js";
-    import "https://cdn.jsdelivr.net/npm/@finos/perspective-viewer-d3fc@3.4.3/dist/cdn/perspective-viewer-d3fc.js";
+    // ============================================================
+    // River · Observatory — dashboard front-end
+    // No framework, no chart library; pure SVG + DOM.
+    // ============================================================
 
-    const worker = await perspective.worker();
+    const COLORS = {
+      online:   '#ff9d2c', // phosphor amber
+      batch:    '#6dffa1', // CRT green
+      liftwing: '#c5b894', // dim brass
+    };
 
-    // --- Modal + config-driven docs ---
+    let metricsData = { online: [], batch: [], liftwing: [] };
+    let currentMetric = 'rocauc';
+    const editsData = new Map();
+
+    // ---------- modal + config docs ----------
     async function loadConfig() {
       const r = await fetch("/api/config");
       const cfg = await r.json();
@@ -192,8 +238,8 @@
     loadConfig();
 
     const modal = document.getElementById("about-modal");
-    function openModal() { modal.hidden = false; }
-    function closeModal() { modal.hidden = true; }
+    const openModal = () => { modal.hidden = false; };
+    const closeModal = () => { modal.hidden = true; };
     document.getElementById("about-btn").addEventListener("click", openModal);
     document.getElementById("about-close").addEventListener("click", closeModal);
     modal.querySelector(".modal-backdrop").addEventListener("click", closeModal);
@@ -201,7 +247,7 @@
       if (e.key === "Escape" && !modal.hidden) closeModal();
     });
 
-    // --- Summary stats ---
+    // ---------- summary stats ----------
     function setUpdatedNow() {
       document.getElementById("last-updated").textContent =
         "updated " + new Date().toLocaleTimeString();
@@ -221,71 +267,205 @@
     refreshSummary();
     setInterval(refreshSummary, 5000);
 
-    // --- Metrics chart ---
-    const metricsSchema = {
-      ts: "datetime",
-      model: "string",
-      rocauc: "float",
-      logloss: "float",
-      brier: "float",
-      n: "integer",
-    };
-    const metricsTable = await worker.table(metricsSchema, { limit: 50000 });
-    const metricsViewer = document.getElementById("metrics-viewer");
-    await metricsViewer.load(metricsTable);
-    await metricsViewer.restore({
-      plugin: "Y Line",
-      group_by: ["ts"],
-      split_by: ["model"],
-      columns: ["rocauc"],
-      aggregates: { rocauc: "avg" },
-      theme: "Pro Dark",
-      settings: false,
-    });
+    // ---------- chart (uPlot) ----------
+    let chart = null;
+    const chartBody = document.querySelector('#metrics-viewer .chart-body');
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'chart-empty';
+    emptyEl.innerHTML = 'Waiting for labeled events.<br>Precision and recall need positive labels; AUC needs both classes.';
+    chartBody.appendChild(emptyEl);
 
-    async function loadMetrics() {
-      const r = await fetch("/api/metrics?since_minutes=360");
-      const data = await r.json();
-      const rows = [];
-      for (const [model, arr] of Object.entries(data)) {
-        for (const x of arr) {
-          rows.push({ ...x, model });
+    function pivotData() {
+      // Build [ts[], online[], batch[], liftwing[]] aligned by timestamp.
+      const tsSet = new Map(); // ts (unix s) -> row index
+      const ts = [];
+      const series = { online: [], batch: [], liftwing: [] };
+      // Union of all timestamps
+      for (const arr of Object.values(metricsData)) {
+        for (const r of arr) {
+          const t = Math.floor(new Date(r.ts).getTime() / 1000);
+          if (!tsSet.has(t)) {
+            tsSet.set(t, ts.length);
+            ts.push(t);
+          }
         }
       }
-      await metricsTable.replace(rows);
+      const order = ts.map((t, i) => [t, i])
+        .sort((a, b) => a[0] - b[0])
+        .map(x => x[1]);
+      const sortedTs = order.map(i => ts[i]);
+      const remap = new Map();
+      order.forEach((origIdx, newIdx) => remap.set(origIdx, newIdx));
+      const aligned = { online: new Array(sortedTs.length).fill(null),
+                        batch: new Array(sortedTs.length).fill(null),
+                        liftwing: new Array(sortedTs.length).fill(null) };
+      for (const [model, arr] of Object.entries(metricsData)) {
+        for (const r of arr) {
+          const t = Math.floor(new Date(r.ts).getTime() / 1000);
+          const origIdx = tsSet.get(t);
+          const newIdx = remap.get(origIdx);
+          aligned[model][newIdx] = r[currentMetric];
+        }
+      }
+      return [sortedTs, aligned.online, aligned.batch, aligned.liftwing];
+    }
+
+    function updateLegendValue(idx, data) {
+      const items = document.querySelectorAll('#metrics-viewer .chart-legend-item');
+      const fmt = v => (v == null ? '—' : v.toFixed(3));
+      items.forEach((el, i) => {
+        const val = idx == null ? '' : fmt(data[i + 1][idx]);
+        el.querySelector('em').textContent = val ? ' · ' + val : '';
+      });
+    }
+
+    function buildChart() {
+      const opts = {
+        width: chartBody.clientWidth,
+        height: chartBody.clientHeight,
+        padding: [12, 18, 6, 8],
+        pxAlign: false,
+        cursor: {
+          drag: { x: false, y: false },
+          points: { size: 7, width: 2, fill: 'var(--bg)', stroke: (u, i) => u.series[i].stroke },
+        },
+        scales: {
+          x: { time: true },
+          y: { range: (u, dmin, dmax) => {
+            if (currentMetric === 'rocauc' || currentMetric === 'precision' || currentMetric === 'recall') {
+              return [0, 1];
+            }
+            return [Math.min(0, dmin), Math.max(1, dmax)];
+          } },
+        },
+        axes: [
+          {
+            stroke: '#5a5240',
+            grid:  { stroke: '#2a251c', width: 1, dash: [2, 4] },
+            ticks: { stroke: '#2a251c', width: 1, size: 4 },
+            font: '10px "JetBrains Mono", ui-monospace, monospace',
+            space: 80,
+          },
+          {
+            stroke: '#5a5240',
+            grid:  { stroke: '#2a251c', width: 1, dash: [2, 4] },
+            ticks: { stroke: '#2a251c', width: 1, size: 4 },
+            font: '10px "JetBrains Mono", ui-monospace, monospace',
+            size: 44,
+            values: (u, splits) => splits.map(v => v == null ? '' : v.toFixed(2)),
+          },
+        ],
+        legend: { show: false },
+        series: [
+          {},
+          { label: 'online',   stroke: COLORS.online,   width: 1.5, spanGaps: true, points: { show: false } },
+          { label: 'batch',    stroke: COLORS.batch,    width: 1.5, spanGaps: true, points: { show: false } },
+          { label: 'liftwing', stroke: COLORS.liftwing, width: 1.5, spanGaps: true, points: { show: false } },
+        ],
+        hooks: {
+          setCursor: [
+            (u) => {
+              const idx = u.cursor.idx;
+              updateLegendValue(idx, u.data);
+            },
+          ],
+        },
+      };
+      return new uPlot(opts, [[], [], [], []], chartBody);
+    }
+
+    function renderChart() {
+      const data = pivotData();
+      const hasAny = data[0].length > 0 &&
+        [1, 2, 3].some(i => data[i].some(v => v != null));
+      if (!hasAny) {
+        emptyEl.style.display = 'flex';
+        if (chart) chart.setData([[], [], [], []]);
+        updateLegendValue(null, [[], [], [], []]);
+        return;
+      }
+      emptyEl.style.display = 'none';
+      if (!chart) chart = buildChart();
+      chart.setData(data);
+    }
+
+    new ResizeObserver(() => {
+      if (chart) chart.setSize({
+        width: chartBody.clientWidth,
+        height: chartBody.clientHeight,
+      });
+    }).observe(chartBody);
+
+    document.querySelectorAll('.chart-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentMetric = tab.dataset.metric;
+        renderChart();
+      });
+    });
+
+    new ResizeObserver(() => renderChart()).observe(
+      document.querySelector('#metrics-viewer .chart-body'));
+
+    async function loadMetrics() {
+      const r = await fetch('/api/metrics?since_minutes=360');
+      const data = await r.json();
+      metricsData = {
+        online: data.online || [],
+        batch: data.batch || [],
+        liftwing: data.liftwing || [],
+      };
+      renderChart();
     }
     loadMetrics();
     setInterval(loadMetrics, 20000);
 
-    // --- Live edits table ---
-    const editsSchema = {
-      rev_id: "integer",
-      edit_ts: "datetime",
-      wiki: "string",
-      title: "string",
-      user: "string",
-      is_anon: "boolean",
-      is_bot: "boolean",
-      score_online: "float",
-      score_batch: "float",
-      score_liftwing: "float",
-      label: "integer",
-    };
-    const editsTable = await worker.table(editsSchema, { index: "rev_id", limit: 2000 });
-    const editsViewer = document.getElementById("edits-viewer");
-    await editsViewer.load(editsTable);
-    await editsViewer.restore({
-      plugin: "Datagrid",
-      sort: [["rev_id", "desc"]],
-      columns: [
-        "edit_ts", "title", "user", "is_anon", "score_online",
-        "score_batch", "score_liftwing", "label",
-      ],
-      theme: "Pro Dark",
-      settings: false,
-    });
+    // ---------- live edits table ----------
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function scoreCell(v) {
+      if (v == null) return `<td class="score-cell null"><span>—</span></td>`;
+      const pct = Math.max(0, Math.min(100, v * 100));
+      return `<td class="score-cell" style="--v:${pct.toFixed(1)}%"><span>${v.toFixed(3)}</span></td>`;
+    }
+    function labelPill(v) {
+      if (v == null) return `<span class="label-pill pending">pending</span>`;
+      if (v === 1)   return `<span class="label-pill reverted">reverted</span>`;
+      return            `<span class="label-pill kept">kept</span>`;
+    }
+    function rowHtml(r, isNew) {
+      const ts = new Date(r.edit_ts);
+      const hh = String(ts.getHours()).padStart(2, '0');
+      const mm = String(ts.getMinutes()).padStart(2, '0');
+      const ss = String(ts.getSeconds()).padStart(2, '0');
+      const userClass = r.is_bot ? 'bot' : r.is_anon ? 'anon' : '';
+      const title = escapeHtml(r.title);
+      const user = escapeHtml(r.user);
+      return `<tr data-rev="${r.rev_id}"${isNew ? ' class="new"' : ''}>
+        <td class="col-time">${hh}:${mm}:${ss}</td>
+        <td class="col-title" title="${title}">${title}</td>
+        <td class="col-user ${userClass}" title="${user}">${user}</td>
+        ${scoreCell(r.score_online)}
+        ${scoreCell(r.score_batch)}
+        ${scoreCell(r.score_liftwing)}
+        <td>${labelPill(r.label)}</td>
+      </tr>`;
+    }
+    function renderTable() {
+      const tbody = document.querySelector('#edits-viewer tbody');
+      const rows = Array.from(editsData.values())
+        .sort((a, b) => b.rev_id - a.rev_id)
+        .slice(0, 100);
+      const existing = new Set([...tbody.children].map(tr => tr.dataset.rev));
+      tbody.innerHTML = rows
+        .map(r => rowHtml(r, !existing.has(String(r.rev_id))))
+        .join('');
+    }
 
-    // --- Autoresearch candidates ---
+    // ---------- candidates ----------
     async function refreshCandidates() {
       const r = await fetch("/api/candidates?limit=20");
       const rows = await r.json();
@@ -302,18 +482,15 @@
               <th>ΔAUC</th><th>p</th><th>candidate</th><th>incumbent</th>
             </tr></thead>
             <tbody>${rows
-              .map(
-                (r) => `<tr>
-                  <td>${new Date(r.proposed_ts).toLocaleString()}</td>
-                  <td>${(r.rationale || r.name || "").replace(/</g, "&lt;")}</td>
-                  <td class="${statusClass(r.status)}">${r.status}</td>
-                  <td>${fmt(r.delta_rocauc, 4)}</td>
-                  <td>${fmt(r.bootstrap_p, 3)}</td>
-                  <td>${fmt(r.backtest_rocauc, 3)}</td>
-                  <td>${fmt(r.incumbent_rocauc, 3)}</td>
-                </tr>`
-              )
-              .join("")}
+              .map(r => `<tr>
+                <td>${new Date(r.proposed_ts).toLocaleString()}</td>
+                <td>${escapeHtml(r.rationale || r.name || "")}</td>
+                <td class="${statusClass(r.status)}">${r.status}</td>
+                <td>${fmt(r.delta_rocauc, 4)}</td>
+                <td>${fmt(r.bootstrap_p, 3)}</td>
+                <td>${fmt(r.backtest_rocauc, 3)}</td>
+                <td>${fmt(r.incumbent_rocauc, 3)}</td>
+              </tr>`).join("")}
             </tbody>
           </table>`
         : `<p class="muted">No candidates yet. Autoresearch runs once per day when enabled.</p>`;
@@ -321,22 +498,19 @@
     refreshCandidates();
     setInterval(refreshCandidates, 30000);
 
-    // --- Live event table: WS for push + polling fallback ---
+    // ---------- WS + polling fallback ----------
     let wsAlive = false;
-    let lastRevId = 0;
     function openWS() {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(`${proto}//${location.host}/ws/edits`);
       ws.binaryType = "arraybuffer";
       ws.onopen = () => { wsAlive = true; };
-      ws.onmessage = async (e) => {
+      ws.onmessage = (e) => {
         const txt = typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data);
         const msg = JSON.parse(txt);
         if (msg.type === "seed" || msg.type === "update") {
-          if (msg.rows.length) {
-            lastRevId = Math.max(lastRevId, ...msg.rows.map((r) => r.rev_id));
-            await editsTable.update(msg.rows);
-          }
+          for (const row of msg.rows) editsData.set(row.rev_id, row);
+          renderTable();
         }
       };
       ws.onclose = () => { wsAlive = false; setTimeout(openWS, 2000); };
@@ -344,15 +518,12 @@
     }
     openWS();
 
-    // Polling fallback — fires every 5s and only takes effect if the WS is
-    // not alive (e.g. corporate proxy blocked it, browser quirk, etc.).
     async function pollRecent() {
       if (wsAlive) return;
-      const r = await fetch("/api/recent?limit=200");
+      const r = await fetch('/api/recent?limit=200');
       const rows = await r.json();
-      if (!rows.length) return;
-      lastRevId = Math.max(lastRevId, ...rows.map((r) => r.rev_id));
-      await editsTable.update(rows);
+      for (const row of rows) editsData.set(row.rev_id, row);
+      renderTable();
     }
     setInterval(pollRecent, 5000);
   </script>

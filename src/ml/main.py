@@ -238,7 +238,8 @@ async def _metric_recorder(pool):
                     continue
                 buf.add(int(r["label"]), float(r[col]))
             await store.record_metric(
-                pool, model, WINDOW, len(buf), buf.rocauc(), buf.logloss(), buf.brier()
+                pool, model, WINDOW, len(buf),
+                buf.rocauc(), buf.precision(), buf.recall(),
             )
 
 
