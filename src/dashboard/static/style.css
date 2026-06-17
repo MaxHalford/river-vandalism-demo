@@ -139,17 +139,6 @@ body > header::after {
   font: 500 clamp(28px, 4.2vw, 44px)/1.05 var(--mono);
   color: var(--fg);
   letter-spacing: -0.02em;
-  display: flex;
-  align-items: baseline;
-  gap: 0.4em;
-}
-
-.brand-title::before {
-  content: '▸';
-  color: var(--cobalt);
-  font-weight: 700;
-  font-size: 0.7em;
-  line-height: 1;
 }
 
 .brand-title em {
