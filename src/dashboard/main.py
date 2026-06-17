@@ -9,6 +9,7 @@ Serves a single page that shows:
 from __future__ import annotations
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -167,7 +168,9 @@ async def ws_edits(ws: WebSocket):
 
 
 def run():
-    uvicorn.run(app, host="0.0.0.0", port=CONFIG.dashboard_port, log_level="info")
+    # Railway injects PORT; fall back to the configured value locally.
+    port = int(os.environ.get("PORT") or CONFIG.dashboard_port)
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 
 
 if __name__ == "__main__":

@@ -67,7 +67,14 @@ def _is_target_edit(e: dict) -> bool:
 
 
 def _is_revert_tag_event(e: dict) -> bool:
-    added = e.get("tags", {}).get("added") or e.get("added") or []
+    """The revision-tags-change schema carries the current and prior tag
+    lists; the *added* set is the difference. We only care when `mw-reverted`
+    was added (not removed)."""
+    current = e.get("tags") or []
+    prior = (e.get("prior_state") or {}).get("tags") or []
+    if not isinstance(current, list) or not isinstance(prior, list):
+        return False
+    added = set(current) - set(prior)
     return "mw-reverted" in added
 
 
