@@ -5,8 +5,9 @@ dockerfilePath = "Dockerfile"
 [deploy]
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
-healthcheckPath = "/"
-healthcheckTimeout = 30
 
 # Shared by all three application services. Per-service start commands and
 # env vars are set in the Railway dashboard. See DEPLOY.md.
+#
+# Note: no global healthcheck. The ingest and ml services don't expose HTTP;
+# the dashboard service overrides the healthcheck path in the Railway UI.
