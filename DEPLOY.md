@@ -1,75 +1,85 @@
 # Deploying to Railway
 
-The project deploys as **five services** in one Railway project:
+Four services in one Railway project:
 
-| Service           | Source           | Notes                                                  |
-| ----------------- | ---------------- | ------------------------------------------------------ |
-| `postgres`        | Railway plugin   | Use the official Postgres template                     |
-| `redpanda`        | Docker image     | `redpandadata/redpanda:v24.2.7` with a 1 GiB volume    |
-| `ingest`          | This repo        | Start command: `uv run ingest`                         |
-| `ml`              | This repo        | Start command: `uv run ml`                             |
-| `dashboard`       | This repo        | Start command: `uv run dashboard`, public domain on    |
+| Service     | Source           | Notes                                                  |
+| ----------- | ---------------- | ------------------------------------------------------ |
+| `Postgres`  | Railway plugin   | Official Postgres template; queue + journal both live here |
+| `ingest`    | This repo        | `SERVICE=ingest`                                       |
+| `ml`        | This repo        | `SERVICE=ml`                                           |
+| `dashboard` | This repo        | `SERVICE=dashboard`, public domain on                  |
+
+All three app services use the shared `Dockerfile` and pick their entrypoint
+from the `SERVICE` env var.
 
 ## One-time setup
 
 ```sh
-brew install railway   # or: curl -fsSL cli.new | sh
+brew install railway
 railway login
-railway init           # creates a project
+railway init --name river-vandalism-demo
+railway add --database postgres
 ```
 
-## 1. Postgres
-
-Add the official Postgres plugin from the Railway dashboard. Once provisioned,
-note the `DATABASE_URL` it exposes (Railway injects it into linked services).
-
-Apply the schema once after the database is up:
+Apply the schema once after Postgres provisions:
 
 ```sh
-railway run --service postgres psql "$DATABASE_URL" -f sql/schema.sql
+railway connect Postgres < sql/schema.sql
 ```
 
-(Or open the Postgres data tab and paste the contents of `sql/schema.sql`.)
+## Create the three app services
 
-## 2. Redpanda
+```sh
+for svc in ingest ml dashboard; do
+  railway add --service "$svc"
+done
+```
 
-Create a new empty service, set the Docker image to
-`redpandadata/redpanda:v24.2.7` and configure:
+For each service, set the env vars (replace `${{Postgres.DATABASE_URL}}`
+with your real Railway reference syntax in the dashboard, or set it as a
+variable reference):
 
-- **Start command**:
-  ```
-  redpanda start --smp=1 --memory=512M --reserve-memory=0M --overprovisioned \
-    --node-id=0 --check=false \
-    --kafka-addr=PLAINTEXT://0.0.0.0:9092 \
-    --advertise-kafka-addr=PLAINTEXT://redpanda.railway.internal:9092
-  ```
-- **Volume**: mount 1 GiB at `/var/lib/redpanda/data`
-- **Internal port**: 9092 (no public networking needed)
+```sh
+railway variables --service ingest \
+  --set "SERVICE=ingest" \
+  --set 'POSTGRES_DSN=${{Postgres.DATABASE_URL}}' \
+  --set "WIKI_FILTERS=enwiki"
 
-## 3. ingest / ml / dashboard
+railway variables --service ml \
+  --set "SERVICE=ml" \
+  --set 'POSTGRES_DSN=${{Postgres.DATABASE_URL}}'
 
-For each of the three application services:
+railway variables --service dashboard \
+  --set "SERVICE=dashboard" \
+  --set 'POSTGRES_DSN=${{Postgres.DATABASE_URL}}' \
+  --set "DASHBOARD_PORT=8000"
+```
 
-1. Create a service from this GitHub repo.
-2. Set the start command (see table above).
-3. Wire env vars:
-   - `KAFKA_BOOTSTRAP=redpanda.railway.internal:9092`
-   - `POSTGRES_DSN=${{ Postgres.DATABASE_URL }}`
-   - copy the rest from `.env.example`
-4. Only on `dashboard`: enable a public TCP/HTTP domain on port 8000.
+## Deploy code
+
+```sh
+for svc in ingest ml dashboard; do
+  railway up --service "$svc" --detach
+done
+```
+
+## Public domain on dashboard
+
+```sh
+railway domain --service dashboard
+```
 
 ## Verify
 
 ```sh
-railway logs --service ingest    # should see "edits=X tags=Y reverts=Z" every 30s
-railway logs --service ml        # should see "learned N" once labels age in (~hours)
+railway logs --service ingest      # "edits=X tags=Y reverts=Z enqueued=W" every 30s
+railway logs --service ml          # "learned N" once labels age in (~hours)
 open https://<your-dashboard>.up.railway.app
 ```
 
 ## Cost
 
-Roughly $5–10/month on Railway's $5 starter plan: 3 small Python services
-(~256MB each), Redpanda at 512MB, Postgres at the free tier.
+About $5–8/month on Railway's starter plan: 3 small Python services + Postgres.
 
 ## Tearing down
 

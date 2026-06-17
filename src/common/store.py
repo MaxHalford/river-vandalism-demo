@@ -14,6 +14,35 @@ async def open_pool() -> asyncpg.Pool:
     return await asyncpg.create_pool(CONFIG.postgres_dsn, min_size=1, max_size=8)
 
 
+async def enqueue_events(pool: asyncpg.Pool, rows: list[tuple[str, dict]]) -> None:
+    """rows: list of (kind, payload). Batched insert into the queue."""
+    if not rows:
+        return
+    async with pool.acquire() as conn:
+        await conn.executemany(
+            "INSERT INTO event_queue (kind, payload) VALUES ($1, $2::jsonb)",
+            [(kind, orjson.dumps(payload).decode()) for kind, payload in rows],
+        )
+
+
+async def drain_events(pool: asyncpg.Pool, limit: int = 500) -> list[asyncpg.Record]:
+    """Atomic claim-and-delete batch from the queue. SKIP LOCKED so multiple
+    ml workers can run safely if we ever scale out."""
+    return await pool.fetch(
+        """
+        DELETE FROM event_queue
+        WHERE id IN (
+            SELECT id FROM event_queue
+            ORDER BY id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT $1
+        )
+        RETURNING id, kind, payload, enqueued_ts
+        """,
+        limit,
+    )
+
+
 _INSERT_EDIT_SQL = """
     INSERT INTO edits (
         rev_id, wiki, title, user_name, is_anon, is_bot, is_minor,

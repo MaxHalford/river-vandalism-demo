@@ -14,10 +14,7 @@ def _env(key: str, default: str | None = None) -> str:
 
 @dataclass(frozen=True)
 class Config:
-    kafka_bootstrap: str = _env("KAFKA_BOOTSTRAP", "localhost:19092")
     postgres_dsn: str = _env("POSTGRES_DSN", "postgres://river:river@localhost:5432/river")
-    edits_topic: str = _env("EDITS_TOPIC", "wiki.edits")
-    tags_topic: str = _env("TAGS_TOPIC", "wiki.tags")
     sse_recentchange: str = _env(
         "SSE_RECENTCHANGE", "https://stream.wikimedia.org/v2/stream/recentchange"
     )

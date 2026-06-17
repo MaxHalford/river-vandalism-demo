@@ -11,20 +11,26 @@ API.
 
 ```
 recentchange SSE ─┐
-                  ├─► ingest ─► Redpanda ─► ml ─► Postgres ─► dashboard
-tags-change SSE ──┘                                                ▲
-                                                                   │
-                                                              FastAPI + Perspective
+                  ├─► ingest ─► event_queue ─► ml ─► edits ─► dashboard
+tags-change SSE ──┘   (postgres)                  (postgres)      ▲
+                                                                  │
+                                                          FastAPI + Perspective
 ```
 
-Four services:
+Three application services, one database:
 
 | service     | purpose                                                          |
 | ----------- | ---------------------------------------------------------------- |
-| `ingest`    | Subscribe to two Wikimedia SSE streams, produce to Kafka topics  |
-| `ml`        | Consume Kafka, extract features, run 3 models, persist results   |
-| `dashboard` | FastAPI + Perspective dashboard with live updates                |
-| `redpanda`  | Single-broker Kafka                                              |
+| `ingest`    | Subscribe to two Wikimedia SSE streams, enqueue to Postgres      |
+| `ml`        | Drain queue, extract features, run 3 models, write edits         |
+| `dashboard` | FastAPI + Perspective dashboard, reads `edits`                   |
+| `postgres`  | Queue (`event_queue`) + journal (`edits`)                        |
+
+The queue is a plain Postgres table drained with
+`SELECT ... FOR UPDATE SKIP LOCKED`. At Wikipedia's actual edit rate (~10
+evt/s) this is comfortably the right tool. For higher volumes the same code
+runs unchanged with Kafka or Redpanda in front — `ingest` would produce there,
+`ml` would consume and otherwise be identical.
 
 ## Quick start (local)
 

@@ -1,3 +1,16 @@
+-- Postgres-as-queue. Rows are inserted by the ingest service and drained by
+-- the ml service via SELECT ... FOR UPDATE SKIP LOCKED. We delete on drain;
+-- the queue stays small (events linger only as long as ml takes to process
+-- them). At target throughput (~1k evt/s) the table churns under a thousand
+-- rows at steady state, so the index stays cheap.
+CREATE TABLE IF NOT EXISTS event_queue (
+    id          BIGSERIAL PRIMARY KEY,
+    kind        TEXT NOT NULL CHECK (kind IN ('edit', 'tag')),
+    payload     JSONB NOT NULL,
+    enqueued_ts TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS event_queue_id ON event_queue(id);
+
 CREATE TABLE IF NOT EXISTS edits (
     rev_id           BIGINT PRIMARY KEY,
     wiki             TEXT        NOT NULL,

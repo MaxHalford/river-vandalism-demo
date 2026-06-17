@@ -8,7 +8,6 @@ import asyncio
 from datetime import datetime, timezone
 
 import orjson
-from aiokafka import AIOKafkaConsumer
 
 from src.autoresearch import orchestrator as autoresearch
 from src.autoresearch.sandbox import validate as validate_candidate
@@ -23,13 +22,24 @@ from src.ml.online import MetricBuffer, build_online_model
 log = setup("ml")
 
 
-async def _consume(consumer, edits_q: asyncio.Queue, tags_q: asyncio.Queue):
-    async for msg in consumer:
-        ev = orjson.loads(msg.value)
-        if msg.topic == CONFIG.edits_topic:
-            await edits_q.put(ev)
-        else:
-            await tags_q.put(ev)
+async def _queue_drain(pool, edits_q: asyncio.Queue, tags_q: asyncio.Queue):
+    """Drain the Postgres queue into in-memory async queues so the rest of
+    the pipeline doesn't care about the transport. SKIP LOCKED makes this
+    safe to scale horizontally if we ever want multiple ml workers."""
+    empty_backoff = 0.5
+    while True:
+        rows = await store.drain_events(pool, CONFIG.db_batch_size * 4)
+        if not rows:
+            await asyncio.sleep(empty_backoff)
+            continue
+        for r in rows:
+            payload = r["payload"]
+            if isinstance(payload, str):
+                payload = orjson.loads(payload)
+            if r["kind"] == "edit":
+                await edits_q.put(payload)
+            else:
+                await tags_q.put(payload)
 
 
 def _build_row(ev: dict, feats: dict, scores: dict) -> dict:
@@ -250,16 +260,6 @@ async def main():
     payload = await store.latest_batch_model(pool)
     batch_model_ref = {"model": batch.load(payload)}
     liftwing = LiftWingClient()
-
-    consumer = AIOKafkaConsumer(
-        CONFIG.edits_topic,
-        CONFIG.tags_topic,
-        bootstrap_servers=CONFIG.kafka_bootstrap,
-        group_id="ml",
-        auto_offset_reset="latest",
-        enable_auto_commit=True,
-    )
-    await consumer.start()
     log.info("ml service started")
 
     edits_q: asyncio.Queue = asyncio.Queue(maxsize=5000)
@@ -267,7 +267,7 @@ async def main():
 
     try:
         await asyncio.gather(
-            _consume(consumer, edits_q, tags_q),
+            _queue_drain(pool, edits_q, tags_q),
             _edit_worker(edits_q, pool, state, online_ref, batch_model_ref, liftwing),
             _tag_worker(tags_q, pool),
             _negative_sweeper(pool),
@@ -278,7 +278,6 @@ async def main():
             _autoresearch_loop(pool),
         )
     finally:
-        await consumer.stop()
         await liftwing.close()
         await pool.close()
 
