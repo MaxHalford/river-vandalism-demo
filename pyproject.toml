@@ -1,0 +1,37 @@
+[project]
+name = "river-vandalism-demo"
+version = "0.0.1"
+description = "Live Wikipedia vandalism detection with online machine learning"
+requires-python = ">=3.11"
+dependencies = [
+    "river>=0.22.0",
+    "scikit-learn>=1.5",
+    "lightgbm>=4.5",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "aiokafka>=0.12",
+    "httpx>=0.27",
+    "aiohttp-sse-client>=0.2.1",
+    "asyncpg>=0.30",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "perspective-python>=3.0",
+    "orjson>=3.10",
+    "pydantic>=2.9",
+    "python-dotenv>=1.0",
+    "openai>=1.55",
+]
+
+[project.scripts]
+ingest = "src.ingest.main:run"
+ml = "src.ml.main:run"
+dashboard = "src.dashboard.main:run"
+retrain = "src.ml.batch:run_once"
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.7", "ipython>=8.27"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

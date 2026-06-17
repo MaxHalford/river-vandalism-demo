@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Live Wikipedia vandalism detection</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/@finos/perspective-viewer@3.4.3/dist/css/themes.css"
+  />
+</head>
+<body>
+  <header>
+    <h1>Live Wikipedia vandalism detection</h1>
+    <p>
+      <a href="https://riverml.xyz">River</a> online learning vs. daily-retrained LightGBM
+      vs. Wikimedia's <a href="https://api.wikimedia.org/wiki/Lift_Wing_API/Reference">Lift Wing</a>
+      Revert Risk model.
+      <a href="https://github.com/yourname/river-vandalism-demo">source</a>.
+    </p>
+    <div id="summary"></div>
+  </header>
+
+  <main>
+    <section>
+      <h2>Rolling metrics (last 6 hours)</h2>
+      <perspective-viewer id="metrics-viewer"></perspective-viewer>
+    </section>
+    <section>
+      <h2>Live edit stream</h2>
+      <perspective-viewer id="edits-viewer"></perspective-viewer>
+    </section>
+    <section id="candidates-section">
+      <h2>Autoresearch candidates</h2>
+      <div id="candidates"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import perspective from "https://cdn.jsdelivr.net/npm/@finos/perspective@3.4.3/dist/cdn/perspective.js";
+    import "https://cdn.jsdelivr.net/npm/@finos/perspective-viewer@3.4.3/dist/cdn/perspective-viewer.js";
+    import "https://cdn.jsdelivr.net/npm/@finos/perspective-viewer-datagrid@3.4.3/dist/cdn/perspective-viewer-datagrid.js";
+    import "https://cdn.jsdelivr.net/npm/@finos/perspective-viewer-d3fc@3.4.3/dist/cdn/perspective-viewer-d3fc.js";
+
+    const worker = await perspective.worker();
+
+    // --- Summary stats ---
+    async function refreshSummary() {
+      const r = await fetch("/api/summary");
+      const s = await r.json();
+      const rate = s.n_labeled > 0 ? ((s.n_reverted / s.n_labeled) * 100).toFixed(2) : "—";
+      document.getElementById("summary").innerHTML = `
+        <span class="stat"><b>${s.n_edits.toLocaleString()}</b> edits 24h</span>
+        <span class="stat"><b>${s.n_labeled.toLocaleString()}</b> labeled</span>
+        <span class="stat"><b>${s.n_reverted.toLocaleString()}</b> reverted (${rate}%)</span>
+        <span class="stat"><b>${s.n_pending.toLocaleString()}</b> pending</span>
+      `;
+    }
+    refreshSummary();
+    setInterval(refreshSummary, 15000);
+
+    // --- Metrics chart ---
+    const metricsSchema = {
+      ts: "datetime",
+      model: "string",
+      rocauc: "float",
+      logloss: "float",
+      brier: "float",
+      n: "integer",
+    };
+    const metricsTable = await worker.table(metricsSchema, { limit: 50000 });
+    const metricsViewer = document.getElementById("metrics-viewer");
+    await metricsViewer.load(metricsTable);
+    await metricsViewer.restore({
+      plugin: "Y Line",
+      group_by: ["ts"],
+      split_by: ["model"],
+      columns: ["rocauc"],
+      aggregates: { rocauc: "avg" },
+      theme: "Pro Dark",
+      settings: false,
+    });
+
+    async function loadMetrics() {
+      const r = await fetch("/api/metrics?since_minutes=360");
+      const data = await r.json();
+      const rows = [];
+      for (const [model, arr] of Object.entries(data)) {
+        for (const x of arr) {
+          rows.push({ ...x, model });
+        }
+      }
+      await metricsTable.replace(rows);
+    }
+    loadMetrics();
+    setInterval(loadMetrics, 60000);
+
+    // --- Live edits table ---
+    const editsSchema = {
+      rev_id: "integer",
+      edit_ts: "datetime",
+      wiki: "string",
+      title: "string",
+      user: "string",
+      is_anon: "boolean",
+      is_bot: "boolean",
+      score_online: "float",
+      score_batch: "float",
+      score_liftwing: "float",
+      label: "integer",
+    };
+    const editsTable = await worker.table(editsSchema, { index: "rev_id", limit: 2000 });
+    const editsViewer = document.getElementById("edits-viewer");
+    await editsViewer.load(editsTable);
+    await editsViewer.restore({
+      plugin: "Datagrid",
+      sort: [["rev_id", "desc"]],
+      columns: [
+        "edit_ts", "title", "user", "is_anon", "score_online",
+        "score_batch", "score_liftwing", "label",
+      ],
+      theme: "Pro Dark",
+      settings: false,
+    });
+
+    // --- Autoresearch candidates ---
+    async function refreshCandidates() {
+      const r = await fetch("/api/candidates?limit=20");
+      const rows = await r.json();
+      const fmt = (n, p = 4) => (n == null ? "—" : Number(n).toFixed(p));
+      const statusClass = (s) =>
+        s === "live" ? "ok"
+        : s === "promoted" ? "ok"
+        : s.startsWith("rejected") ? "bad"
+        : "muted";
+      document.getElementById("candidates").innerHTML = rows.length
+        ? `<table>
+            <thead><tr>
+              <th>when</th><th>hypothesis</th><th>status</th>
+              <th>ΔAUC</th><th>p</th><th>candidate</th><th>incumbent</th>
+            </tr></thead>
+            <tbody>${rows
+              .map(
+                (r) => `<tr>
+                  <td>${new Date(r.proposed_ts).toLocaleString()}</td>
+                  <td>${(r.rationale || r.name || "").replace(/</g, "&lt;")}</td>
+                  <td class="${statusClass(r.status)}">${r.status}</td>
+                  <td>${fmt(r.delta_rocauc, 4)}</td>
+                  <td>${fmt(r.bootstrap_p, 3)}</td>
+                  <td>${fmt(r.backtest_rocauc, 3)}</td>
+                  <td>${fmt(r.incumbent_rocauc, 3)}</td>
+                </tr>`
+              )
+              .join("")}
+            </tbody>
+          </table>`
+        : `<p class="muted">No candidates yet. Autoresearch runs once per day when enabled.</p>`;
+    }
+    refreshCandidates();
+    setInterval(refreshCandidates, 30000);
+
+    // --- WebSocket live updates ---
+    function openWS() {
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${proto}//${location.host}/ws/edits`);
+      ws.binaryType = "arraybuffer";
+      ws.onmessage = async (e) => {
+        const txt = typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data);
+        const msg = JSON.parse(txt);
+        if (msg.type === "seed" || msg.type === "update") {
+          await editsTable.update(msg.rows);
+        }
+      };
+      ws.onclose = () => setTimeout(openWS, 2000);
+    }
+    openWS();
+  </script>
+</body>
+</html>

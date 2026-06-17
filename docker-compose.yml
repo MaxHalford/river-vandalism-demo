@@ -1,0 +1,70 @@
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092,EXTERNAL://localhost:19092
+    ports:
+      - "19092:19092"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: river
+      POSTGRES_PASSWORD: river
+      POSTGRES_DB: river
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "river"]
+      interval: 5s
+      retries: 10
+
+  ingest:
+    build: .
+    command: ["uv", "run", "ingest"]
+    env_file: .env
+    environment:
+      KAFKA_BOOTSTRAP: redpanda:9092
+      POSTGRES_DSN: postgres://river:river@postgres:5432/river
+    depends_on:
+      redpanda: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+
+  ml:
+    build: .
+    command: ["uv", "run", "ml"]
+    env_file: .env
+    environment:
+      KAFKA_BOOTSTRAP: redpanda:9092
+      POSTGRES_DSN: postgres://river:river@postgres:5432/river
+    depends_on:
+      redpanda: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+
+  dashboard:
+    build: .
+    command: ["uv", "run", "dashboard"]
+    env_file: .env
+    environment:
+      POSTGRES_DSN: postgres://river:river@postgres:5432/river
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres: { condition: service_healthy }

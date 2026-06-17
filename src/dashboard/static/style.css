@@ -1,0 +1,114 @@
+:root {
+  --bg: #0e1116;
+  --fg: #e6edf3;
+  --muted: #9aa4ad;
+  --accent: #58a6ff;
+  --card: #161b22;
+  --border: #30363d;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+header h1 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+header p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+header a {
+  color: var(--accent);
+  text-decoration: none;
+}
+header a:hover { text-decoration: underline; }
+
+#summary {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.stat {
+  color: var(--muted);
+}
+.stat b {
+  color: var(--fg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+main {
+  display: grid;
+  grid-template-rows: 280px 1fr auto;
+  gap: 16px;
+  padding: 16px;
+  min-height: calc(100vh - 110px);
+}
+
+#candidates-section {
+  padding: 0 14px 14px;
+}
+#candidates table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+#candidates th, #candidates td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+#candidates th {
+  color: var(--muted);
+  font-weight: 600;
+}
+#candidates td.ok { color: #56d364; }
+#candidates td.bad { color: #f85149; }
+#candidates td.muted { color: var(--muted); }
+#candidates p.muted { color: var(--muted); padding: 12px 0; }
+
+section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+section h2 {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+perspective-viewer {
+  flex: 1;
+  min-height: 0;
+}
