@@ -13,24 +13,39 @@
 </head>
 <body>
   <header>
-    <div class="masthead">
-      <div class="brand">
-        <h1 class="brand-title">Wikipedia vandalism detection</h1>
-        <p class="brand-sub">
-          A live race between three models on the Wikimedia edit stream:
-          <a href="https://riverml.xyz">River</a> online learning,
-          a daily-retrained <a href="https://lightgbm.readthedocs.io/">LightGBM</a> batch,
-          and Wikimedia's own
-          <a href="https://api.wikimedia.org/wiki/Lift_Wing_API/Reference">Lift Wing</a> production model.
-        </p>
+    <div class="banner">
+      <div class="banner-inner">
+        <span class="brand-mark">River · Observatory</span>
+        <span class="banner-sep"></span>
+        <span class="banner-status"><span class="status-dot"></span>Nominal</span>
+        <span class="banner-sep"></span>
+        <span class="banner-meta">stream · <b data-cfg="wikis">enwiki</b></span>
+        <span class="mission-time" id="mission-time">T+ 00:00:00</span>
       </div>
-      <div class="masthead-actions">
-        <button id="about-btn" class="link-btn">how it works</button>
-        <a href="https://github.com/MaxHalford/river-vandalism-demo">source ↗</a>
+    </div>
+    <div class="masthead-wrap">
+      <div class="masthead">
+        <div class="brand">
+          <h1 class="brand-title">Wikipedia <em>vandalism</em> detection</h1>
+          <p class="brand-sub">
+            A live race between three models on the Wikimedia edit stream:
+            <a href="https://riverml.xyz">River</a> online learning,
+            a daily-retrained <a href="https://lightgbm.readthedocs.io/">LightGBM</a> batch,
+            and Wikimedia's own
+            <a href="https://api.wikimedia.org/wiki/Lift_Wing_API/Reference">Lift Wing</a> production model.
+          </p>
+        </div>
+        <div class="masthead-actions">
+          <button id="about-btn" class="link-btn">how it works</button>
+          <a href="https://github.com/MaxHalford/river-vandalism-demo">source ↗</a>
+        </div>
       </div>
     </div>
     <div class="status-bar">
-      <span class="live-indicator">live</span>
+      <div class="live-readout">
+        <div class="live-readout-label">link</div>
+        <div class="live-readout-value"><span class="status-dot"></span>live</div>
+      </div>
       <div id="summary"></div>
       <div id="last-updated"></div>
     </div>
@@ -138,8 +153,9 @@
     <section>
       <h2>
         <span class="section-num">§ I</span>
+        <span class="section-kind">Telemetry</span>
         <span class="section-name">Rolling metrics</span>
-        <span class="section-meta">last 6 hours · 1-min cadence</span>
+        <span class="section-meta">last 6 hrs · 1-min cadence</span>
       </h2>
       <div id="metrics-viewer" class="chart">
         <div class="chart-toolbar">
@@ -160,6 +176,7 @@
     <section>
       <h2>
         <span class="section-num">§ II</span>
+        <span class="section-kind">Downlink</span>
         <span class="section-name">Live edit stream</span>
         <span class="section-meta">websocket · last 100 events</span>
       </h2>
@@ -192,8 +209,9 @@
     <section id="candidates-section">
       <h2>
         <span class="section-num">§ III</span>
-        <span class="section-name">Autoresearch · candidates</span>
-        <span class="section-meta">gpt-5 proposals · ast-sandboxed · paired bootstrap</span>
+        <span class="section-kind">Autoresearch</span>
+        <span class="section-name">Candidates</span>
+        <span class="section-meta">gpt-5 · ast-sandboxed · paired bootstrap</span>
       </h2>
       <div id="candidates"></div>
     </section>
@@ -247,21 +265,42 @@
       if (e.key === "Escape" && !modal.hidden) closeModal();
     });
 
-    // ---------- summary stats ----------
+    // ---------- mission time (T+ counter) ----------
+    const missionStart = Date.now();
+    function tickMission() {
+      const s = Math.floor((Date.now() - missionStart) / 1000);
+      const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((s / 60) % 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      document.getElementById('mission-time').textContent = `T+ ${hh}:${mm}:${ss}`;
+    }
+    tickMission();
+    setInterval(tickMission, 1000);
+
+    // ---------- summary readouts ----------
     function setUpdatedNow() {
-      document.getElementById("last-updated").textContent =
-        "updated " + new Date().toLocaleTimeString();
+      const t = new Date().toLocaleTimeString([], { hour12: false });
+      document.getElementById("last-updated").textContent = "sync " + t;
+    }
+    function readoutHtml(label, value, aux) {
+      const auxHtml = aux ? ` <em>${aux}</em>` : "";
+      return `<div class="stat">
+        <div class="stat-label">${label}</div>
+        <div class="stat-value"><span>${value}</span>${auxHtml}</div>
+      </div>`;
     }
     async function refreshSummary() {
       const r = await fetch("/api/summary");
       const s = await r.json();
-      const rate = s.n_labeled > 0 ? ((s.n_reverted / s.n_labeled) * 100).toFixed(2) : "—";
-      document.getElementById("summary").innerHTML = `
-        <span class="stat"><b>${s.n_edits.toLocaleString()}</b> edits 24h</span>
-        <span class="stat"><b>${s.n_labeled.toLocaleString()}</b> labeled</span>
-        <span class="stat"><b>${s.n_reverted.toLocaleString()}</b> reverted (${rate}%)</span>
-        <span class="stat"><b>${s.n_pending.toLocaleString()}</b> pending</span>
-      `;
+      const rate = s.n_labeled > 0
+        ? ((s.n_reverted / s.n_labeled) * 100).toFixed(2) + "%"
+        : null;
+      document.getElementById("summary").innerHTML = [
+        readoutHtml("Edits · 24h", s.n_edits.toLocaleString()),
+        readoutHtml("Labeled",     s.n_labeled.toLocaleString()),
+        readoutHtml("Reverted",    s.n_reverted.toLocaleString(), rate),
+        readoutHtml("Pending",     s.n_pending.toLocaleString()),
+      ].join("");
       setUpdatedNow();
     }
     refreshSummary();
